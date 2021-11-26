@@ -1,0 +1,108 @@
+---
+title: "Coingeckoscrape"
+author: "peter kaiser"
+date: '2021 11 26 '
+output: html_document
+---
+
+```{r load}
+rm(list=ls())
+library(rvest)
+library(jsonlite)
+library(data.table)
+library(tidyverse)
+library(knitr)
+```
+
+```{r check api status}
+#check api status
+t <- read_html('https://api.coingecko.com/api/v3/ping')
+tjson <- t %>% html_text()
+if (fromJSON(tjson)[[1]]=="(V3) To the Moon!") {
+  print("api works")
+}
+```
+
+
+```{r scrape}
+#get every coin
+get_coins <- function() {
+  t <- read_html("https://api.coingecko.com/api/v3/coins/list")
+  tjson <- t %>% html_text()
+  df <- tjson %>% fromJSON()
+  return(df)
+}
+#get a coin from api
+get_coin <- function(id) {
+  t_list <- list()
+  url <- paste0("https://api.coingecko.com/api/v3/coins/", id)
+  t <- read_html(url)
+  data_list <- t %>%
+    html_text() %>%
+    fromJSON()
+  tryCatch(
+    {
+      t_list[["name"]] <- data_list$name
+      t_list[["symbol"]] <- data_list$symbol
+      t_list[["block_time_in_minutes"]] <- data_list$block_time_in_minutes
+      t_list[["hashing_algorithm"]] <- data_list$hashing_algorithm
+      t_list[["english_name"]] <- data_list$localization$en
+      t_list[["description"]] <- data_list$description$en
+      t_list[["homepage"]] <- data_list$links$homepage
+      t_list[["repos"]] <- data_list$links$repos_url$github
+      t_list[["description"]] <- data_list$description$en
+      t_list[["genesis_date"]] <- data_list$genesis_date
+      t_list[["description"]] <- data_list$description$en
+      t_list[["marketcap_rank"]] <- data_list$market_cap_rank
+      t_list[["current_price"]] <- data_list$market_data$current_price$usd
+      t_list[["ath"]] <- data_list$market_data$ath$usd
+      t_list[["last_price"]] <- data_list$tickers[1,]$last
+      t_list[["category"]] <- data_list$categories
+    },
+    error = function(e) {
+      print(e)
+    }
+  )
+  return(t_list)
+}
+
+#Get the data for ca coin id list
+# I could use lapply bust I feel like lapply doesnt work well with trycatch
+
+get_first_n_coins <- function(coin_list,n) {
+  data_list_all <- list()
+  k <- 0
+  for (i in 1:n) {
+    tryCatch(
+      {
+        print(coinlist[[i]])
+        data_list_one <- get_coin(coin_list[[i]])
+        k <- k + 1
+      },
+      error = function(e) {
+        print(e)
+        print(coinlist[[i]])
+      }
+    )
+    data_list_all[[k]] <- data_list_one
+  }
+  df <- rbindlist(data_list_all, fill = T)
+  df <- df %>%
+    group_by(name) %>%
+    slice(1)
+  return(df)
+}
+#get coin list
+coins <- get_coins()
+coinlist <- as.list(coins$id)
+#after like 10 request i get htp 427 error, hence the 10
+coin_data <- get_first_n_coins(coinlist,10)
+coin_data %>% subset(select = -description) %>% head %>% kable()
+```
+
+```{r}
+ggplot(coin_data, aes(x=ath)) + geom_histogram()
+```
+```{r}
+ggplot(coin_data, aes(x=current_price)) + geom_histogram()
+```
